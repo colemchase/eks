@@ -15,6 +15,25 @@ EKS Pod Identity Agent
   -> Argo CD repo server reads OCI Helm charts
 ```
 
+## Explicit authentication boundaries
+
+There are three distinct authentication systems here. They must not be
+confused with one another.
+
+| Step | Component | Credential mechanism | IAM OIDC provider / IRSA? |
+|---|---|---|---|
+| 1 | ESO pod receives AWS credentials | EKS Pod Identity Agent plus an EKS Pod Identity association | **No.** No IAM OIDC provider is registered and no IRSA annotation is used. |
+| 2 | ESO reads AWS secrets or requests an ECR token | The cluster-specific ESO IAM role, optionally assuming a Build role | **No.** This is IAM and STS authorization. |
+| 3 | ESO writes the Argo repository credential | Kubernetes Secret created by ESO | **No.** The Secret contains generated ECR basic-auth data. |
+| 4 | Argo CD repo server pulls OCI Helm charts | Kubernetes repository Secret: ECR username and token | **No.** Argo does not receive Pod Identity credentials for this pull. |
+| 5 | Kubernetes node pulls workload images | EC2 instance-profile credentials on the bootstrap or Karpenter node role | **No.** This is node IAM, not pod IAM. |
+| 6 | A human signs into Argo CD | Cognito OIDC | Separate concern; it is user login, not AWS workload authentication. |
+
+The EKS cluster can expose an OIDC issuer URL, but this design does not
+register it as an IAM OIDC provider. There is no `AWS::IAM::OIDCProvider`, no
+`aws_iam_openid_connect_provider`, and no
+`eks.amazonaws.com/role-arn` ServiceAccount annotation.
+
 ## Pod Identity
 
 The EKS cluster construct creates an EKS Pod Identity association for:
@@ -27,6 +46,10 @@ IAM role:        <environment>-<region>-eks-external-secrets
 
 The EKS Pod Identity Agent supplies AWS credentials for that IAM role only to
 the ESO controller pods using the `external-secrets` ServiceAccount.
+
+**Explicitly:** the Pod Identity Agent obtains credentials through the EKS Pod
+Identity service. It does not exchange a Kubernetes ServiceAccount token with
+an IAM OIDC provider, which is how IRSA works.
 
 The environment ESO role has permission to assume the Build account's
 `build-helm-chart-reader` role. The Build role is the cross-account boundary
@@ -77,7 +100,8 @@ externalSecretsRole.addToPolicy(new iam.PolicyStatement({
 ### 3. ServiceAccount-to-role binding
 
 This EKS Pod Identity association binds the ESO controller ServiceAccount to
-that cluster-specific role:
+that cluster-specific role. It is the complete workload-to-IAM binding; there
+is no ServiceAccount role annotation or IAM OIDC-provider resource elsewhere:
 
 ```ts
 new eks.CfnPodIdentityAssociation(this, 'ExternalSecretsPodIdentity', {
@@ -171,6 +195,9 @@ ESO uses its Pod Identity credentials to assume that role and obtains an ECR
 authorization token. The credentials remain in the ESO reconciliation path;
 they are not copied to the Argo CD pods.
 
+**Explicitly:** this is an ordinary STS `AssumeRole` call using the ESO IAM
+role. It is not an OIDC token exchange.
+
 ## Argo CD repository Secret
 
 The `build-helm-chart-repository` ExternalSecret consumes the generator and
@@ -192,6 +219,9 @@ data:
 Argo CD discovers the Secret from the repository label. Its repo server uses
 the generated username and token whenever an Application refers to an OCI Helm
 chart in the Build registry.
+
+**Explicitly:** Argo CD authenticates to ECR with the generated repository
+Secret, not with the ESO role, an IRSA role, or an EKS Pod Identity association.
 
 ## Refresh and failure behavior
 
