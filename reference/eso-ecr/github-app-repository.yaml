@@ -1,0 +1,41 @@
+# Separate from ECR: this gives Argo CD a GitHub App credential to read k8s Git.
+---
+apiVersion: external-secrets.io/v1
+kind: ClusterSecretStore
+metadata:
+  name: build-github-app-secretsmanager
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: REPLACE_WITH_REGION
+      role: REPLACE_WITH_BUILD_GITHUB_SECRET_READER_ROLE_ARN
+---
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: k8s-github-app
+  namespace: argocd
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: build-github-app-secretsmanager
+    kind: ClusterSecretStore
+  target:
+    name: k8s-github-app
+    creationPolicy: Owner
+    template:
+      engineVersion: v2
+      metadata:
+        labels:
+          argocd.argoproj.io/secret-type: repository
+      data:
+        type: git
+        url: https://github.com/crcsandboxorg/k8s.git
+        githubAppID: REPLACE_WITH_GITHUB_APP_ID
+        githubAppInstallationID: REPLACE_WITH_GITHUB_APP_INSTALLATION_ID
+        githubAppPrivateKey: "{{ .githubAppPrivateKey }}"
+  data:
+    - secretKey: githubAppPrivateKey
+      remoteRef:
+        key: platform/build/github-app-private-key

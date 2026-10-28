@@ -1,0 +1,9 @@
+# Optional direct per-cluster pattern. ESO uses the credentials already supplied
+# by its EKS Pod Identity association. There is intentionally no spec.role.
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: ECRAuthorizationToken
+metadata:
+  name: build-helm-chart-ecr-token
+  namespace: argocd
+spec:
+  region: REPLACE_WITH_REGION
