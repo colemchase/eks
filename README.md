@@ -1,2 +1,2 @@
 # eks
-prefectected eks cluster
+prefected eks cluster
