@@ -5,5 +5,6 @@ EKS cluster lifecycle design notes:
 - [Bootstrap](BOOTSTRAP.md)
 - [Teardown](TEARDOWN.md)
 - [ESO, ECR, and Argo CD authentication](ESO-ECR-ARGOCD.md)
+- [Kargo platform-chart promotion](KARGO.md)
 - [ExternalDNS](EXTERNAL-DNS.md)
 - [Copyable ESO/ECR reference code](reference/eso-ecr/README.md)

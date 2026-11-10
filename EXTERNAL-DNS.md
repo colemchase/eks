@@ -21,8 +21,11 @@ Git-managed Ingress with hostname annotation
 
 ## What declares a hostname
 
-An Ingress opts in through `external-dns.alpha.kubernetes.io/hostname`.
-The Argo CD public Ingress in Dev, for example, contains:
+With the Ingress source, ExternalDNS normally derives names from
+`spec.rules[].host` (and `spec.tls[].hosts`). The hostname annotation is
+optional; when present, it adds names to those obtained from the Ingress spec.
+The Argo CD public Ingress in Dev deliberately declares the same name in both
+places:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -40,10 +43,29 @@ spec:
 ```
 
 The `alb.*` annotations are consumed by the AWS Load Balancer Controller.
-The `external-dns.*` annotation is consumed by ExternalDNS.  ExternalDNS
-uses the ALB endpoint reported in Ingress status; it does not route traffic
-itself and it does not configure listeners, target groups, certificates, or
-the application Service.
+The `external-dns.*` annotation adds an explicit hostname for ExternalDNS.
+ExternalDNS also sees the `spec.rules[].host` value here, so the annotation is
+redundant for this particular Ingress. It uses the ALB endpoint reported in
+Ingress status; it does not route traffic itself and it does not configure
+listeners, target groups, certificates, or the application Service.
+
+An annotation-free Ingress is therefore sufficient for the normal case:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+spec:
+  ingressClassName: alb
+  rules:
+    - host: app.dev.crcsandbox.click
+```
+
+If an Ingress has both a host in its spec and an ExternalDNS hostname
+annotation, the default behavior is to publish the union of both. To make an
+Ingress explicitly spec-only, set
+`external-dns.alpha.kubernetes.io/ingress-hostname-source: defined-hosts-only`
+on that Ingress. The `alpha` prefix is the one used by the chart currently
+pinned in this platform.
 
 The current Argo control-plane hostnames are:
 
@@ -232,9 +254,9 @@ kubectl -n external-dns describe pod -l app.kubernetes.io/name=external-dns
 
 Then work from the chain outward:
 
-1. Confirm the Ingress has the ExternalDNS hostname annotation, its hostname
-   is in the environment `domainFilters`, and its status contains an ALB
-   address.
+1. Confirm the Ingress has a `spec.rules[].host` or ExternalDNS hostname
+   annotation, its hostname is in the environment `domainFilters`, and its
+   status contains an ALB address.
 2. Confirm the controller pod uses ServiceAccount `external-dns` in namespace
    `external-dns` and the EKS Pod Identity association exists for that exact
    pair.
